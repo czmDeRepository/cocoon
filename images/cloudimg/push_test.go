@@ -17,12 +17,12 @@ type fakeUploader struct {
 	manifest []byte
 }
 
-func (f *fakeUploader) HasBlob(_ context.Context, _ string, digest string) (bool, error) {
+func (f *fakeUploader) HasBlob(_ context.Context, _, digest string) (bool, error) {
 	_, ok := f.blobs[digest]
 	return ok, nil
 }
 
-func (f *fakeUploader) PutBlob(_ context.Context, _ string, digest string, body io.Reader, _ int64) error {
+func (f *fakeUploader) PutBlob(_ context.Context, _, digest string, body io.Reader, _ int64) error {
 	b, err := io.ReadAll(body)
 	if err == nil {
 		f.blobs[digest] = b
