@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io/fs"
 	"net"
+	"os/exec"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -116,6 +118,23 @@ func setupTCRedirect(nsPath, ifName, tapName string, queues int, overrideMAC str
 		return nsErr
 	})
 	return mac, err
+}
+
+func disableTXChecksumOffload(ctx context.Context, ifNames []string) error {
+	var errs []error
+	for _, ifName := range ifNames {
+		if _, err := net.InterfaceByName(ifName); err != nil {
+			errs = append(errs, fmt.Errorf("resolve host interface %s: %w", ifName, err))
+			continue
+		}
+		// ifName came from the kernel-visible CNI result, is validated above,
+		// and is passed as one argv element rather than through a shell.
+		out, err := exec.CommandContext(ctx, "ethtool", "-K", ifName, "tx", "off").CombinedOutput() //nolint:gosec
+		if err != nil {
+			errs = append(errs, fmt.Errorf("ethtool -K %s tx off: %w: %s", ifName, err, strings.TrimSpace(string(out))))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func tcRedirectInNS(ifName, tapName string, queues int, overrideMAC string) (string, error) {

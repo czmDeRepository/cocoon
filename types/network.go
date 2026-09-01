@@ -33,9 +33,9 @@ type NetworkConfig struct {
 
 // Network is the guest-visible IP config for a NIC; all fields omitempty so DHCP NICs serialize empty.
 type Network struct {
-	IP      string `json:"ip,omitempty"`      // dotted decimal, e.g. "10.0.0.2"
-	Gateway string `json:"gateway,omitempty"` // dotted decimal, e.g. "10.0.0.1"
-	Prefix  int    `json:"prefix,omitempty"`  // CIDR prefix length, e.g. 24
+	IP      string `json:"ip,omitempty"`      // IPv4 or IPv6 address, e.g. "10.0.0.2" or "fd30::2"
+	Gateway string `json:"gateway,omitempty"` // gateway in the same address family
+	Prefix  int    `json:"prefix,omitempty"`  // CIDR prefix length, e.g. 24 or 64
 }
 
 // ValidateNetworkConfigs rejects nil NIC entries (null in a persisted record) at load boundaries so downstream consumers may dereference freely.

@@ -181,6 +181,34 @@ func TestNetworkConfig_DNSOptional(t *testing.T) {
 	}
 }
 
+func TestNetworkConfig_IPv6OnlyDynamicNIC(t *testing.T) {
+	cfg := &Config{
+		NetworkMode: "IPv6Only",
+		Networks:    []NetworkInfo{{MAC: "aa:bb:cc:dd:ee:f0"}},
+		DNS:         []string{"fdbd:dc00::10:8:8:8"},
+	}
+
+	var network bytes.Buffer
+	if err := networkConfigTmpl.Execute(&network, cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"dhcp4: false", "dhcp6: true", "accept-ra: true"} {
+		if !strings.Contains(network.String(), want) {
+			t.Errorf("network-config missing %q:\n%s", want, network.String())
+		}
+	}
+
+	var user bytes.Buffer
+	if err := userDataTmpl.Execute(&user, cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"DHCP=ipv6", "IPv6AcceptRA=yes", "DUIDType=link-layer"} {
+		if !strings.Contains(user.String(), want) {
+			t.Errorf("networkd fallback missing %q:\n%s", want, user.String())
+		}
+	}
+}
+
 func TestGenerate_ProducesValidFAT12(t *testing.T) {
 	cfg := &Config{
 		InstanceID: "test-id",

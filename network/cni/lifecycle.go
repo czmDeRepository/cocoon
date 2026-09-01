@@ -13,6 +13,7 @@ import (
 	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/projecteru2/core/log"
 
+	"github.com/cocoonstack/cocoon/config"
 	"github.com/cocoonstack/cocoon/meta"
 	"github.com/cocoonstack/cocoon/network"
 	"github.com/cocoonstack/cocoon/types"
@@ -284,6 +285,18 @@ func (c *CNI) provisionNIC(ctx context.Context, confList *libcni.NetworkConfigLi
 	if addErr != nil {
 		return nil, fmt.Errorf("cni add %s/%s: %w", vmID, ifName, addErr)
 	}
+	if c.conf.NetworkMode == config.NetworkModeIPv6 {
+		hostInterfaces, namesErr := hostInterfaceNames(cniResult)
+		if namesErr != nil {
+			return nil, fmt.Errorf("find CNI host interfaces: %w", namesErr)
+		}
+		if len(hostInterfaces) == 0 {
+			return nil, fmt.Errorf("CNI result did not report a host interface for %s/%s", vmID, ifName)
+		}
+		if offloadErr := disableTXChecksumOffloadFn(ctx, hostInterfaces); offloadErr != nil {
+			return nil, fmt.Errorf("disable TX checksum offload for %s/%s: %w", vmID, ifName, offloadErr)
+		}
+	}
 	netInfo, parseErr := extractNetworkInfo(ctx, cniResult)
 	if parseErr != nil {
 		return nil, fmt.Errorf("parse CNI result: %w", parseErr)
@@ -316,6 +329,29 @@ func (c *CNI) provisionNIC(ctx context.Context, confList *libcni.NetworkConfigLi
 		NetnsPath: nsPath,
 		Network:   netInfo,
 	}, nil
+}
+
+// hostInterfaceNames returns the root-network-namespace interfaces reported by
+// CNI (normally the bridge and the VM's host-side veth). The guest-side ethN
+// has Sandbox set and is deliberately excluded.
+func hostInterfaceNames(result cnitypes.Result) ([]string, error) {
+	currentResult, err := current.NewResultFromResult(result)
+	if err != nil {
+		return nil, fmt.Errorf("convert CNI result: %w", err)
+	}
+	seen := make(map[string]struct{}, len(currentResult.Interfaces))
+	names := make([]string, 0, len(currentResult.Interfaces))
+	for _, iface := range currentResult.Interfaces {
+		if iface == nil || iface.Name == "" || iface.Name == "lo" || iface.Sandbox != "" {
+			continue
+		}
+		if _, ok := seen[iface.Name]; ok {
+			continue
+		}
+		seen[iface.Name] = struct{}{}
+		names = append(names, iface.Name)
+	}
+	return names, nil
 }
 
 func (c *CNI) cniDel(ctx context.Context, confList *libcni.NetworkConfigList, vmID, nsPath, ifName string) error {
@@ -358,21 +394,21 @@ func extractNetworkInfo(ctx context.Context, result cnitypes.Result) (*types.Net
 		return nil, nil
 	}
 
-	for _, ipCfg := range newResult.IPs {
-		if ipCfg.Address.IP.To4() != nil {
-			ones, _ := ipCfg.Address.Mask.Size()
-			info := &types.Network{
-				IP:     ipCfg.Address.IP.String(),
-				Prefix: ones,
+	// Prefer IPv4 in dual-stack results to preserve existing deployments, but
+	// persist IPv6 when it is the only address family returned by CNI.
+	for _, wantIPv4 := range []bool{true, false} {
+		for _, ipCfg := range newResult.IPs {
+			if (ipCfg.Address.IP.To4() != nil) != wantIPv4 {
+				continue
 			}
+			ones, _ := ipCfg.Address.Mask.Size()
+			info := &types.Network{IP: ipCfg.Address.IP.String(), Prefix: ones}
 			if ipCfg.Gateway != nil {
 				info.Gateway = ipCfg.Gateway.String()
 			}
 			return info, nil
 		}
 	}
-	// IPv6-only plugin results are not persisted; log the drop instead of silently recording nil.
-	log.WithFunc("cni.extractNetworkInfo").Warnf(ctx,
-		"CNI result has %d IPs but no IPv4; skipping network info (IPv6-only is unsupported)", len(newResult.IPs))
+	log.WithFunc("cni.extractNetworkInfo").Warnf(ctx, "CNI result has %d unusable IP entries", len(newResult.IPs))
 	return nil, nil
 }

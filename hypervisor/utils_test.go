@@ -210,6 +210,9 @@ func TestBuildBaseCmdline(t *testing.T) {
 	nics := []*types.NetworkConfig{
 		{Network: &types.Network{IP: "10.0.0.2", Gateway: "10.0.0.1", Prefix: 24}},
 	}
+	ipv6NICs := []*types.NetworkConfig{
+		{Network: &types.Network{IP: "fd30:c0c0:1001::20", Gateway: "fd30:c0c0:1001::1", Prefix: 64}},
+	}
 
 	tests := []struct {
 		name, prefix, layers, cow string
@@ -228,6 +231,10 @@ func TestBuildBaseCmdline(t *testing.T) {
 		{
 			name: "ch with nic + dns", prefix: chPrefix, layers: "L", cow: "C", nics: nics, dns: []string{"1.1.1.1"},
 			want: "console=hvc0 loglevel=3 boot=cocoon-overlay cocoon.layers=L cocoon.cow=C clocksource=kvm-clock rw net.ifnames=0 cocoon.hostname=vm ip=10.0.0.2::10.0.0.1:255.255.255.0:vm:eth0:off:1.1.1.1",
+		},
+		{
+			name: "ch skips legacy ip parameter for ipv6", prefix: chPrefix, layers: "L", cow: "C", nics: ipv6NICs, dns: []string{"fdbd:dc00::10:8:8:8"},
+			want: "console=hvc0 loglevel=3 boot=cocoon-overlay cocoon.layers=L cocoon.cow=C clocksource=kvm-clock rw net.ifnames=0 cocoon.hostname=vm",
 		},
 	}
 	for _, tt := range tests {

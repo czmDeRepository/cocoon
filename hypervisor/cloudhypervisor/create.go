@@ -92,12 +92,13 @@ func (ch *CloudHypervisor) generateCidata(vmID string, vmCfg *types.VMConfig, ne
 		return fmt.Errorf("parse DNS servers: %w", err)
 	}
 	metaCfg := &metadata.Config{
-		InstanceID: vmID,
-		Hostname:   vmCfg.Name,
-		Username:   vmCfg.User,
-		Password:   vmCfg.Password,
-		DNS:        dns,
-		Mounts:     buildMountSpecs(storageConfigs),
+		InstanceID:  vmID,
+		Hostname:    vmCfg.Name,
+		Username:    vmCfg.User,
+		Password:    vmCfg.Password,
+		DNS:         dns,
+		NetworkMode: ch.conf.NetworkMode,
+		Mounts:      buildMountSpecs(storageConfigs),
 	}
 	for _, n := range networkConfigs {
 		if n == nil || n.MAC == "" {

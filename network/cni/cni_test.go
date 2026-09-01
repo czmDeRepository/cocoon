@@ -321,6 +321,41 @@ func TestAddFailsClosedOnStaleReclaim(t *testing.T) {
 	}
 }
 
+func TestAddIPv6OnlyDisablesHostTXChecksumOffload(t *testing.T) {
+	c, plugin := newTestCNIWithStore(t)
+	c.conf.NetworkMode = config.NetworkModeIPv6
+	plugin.result = `{
+		"cniVersion":"1.0.0",
+		"interfaces":[
+			{"name":"cni0"},
+			{"name":"veth1234"},
+			{"name":"eth0","sandbox":"/run/netns/vm1"},
+			{"name":"cni0"}
+		],
+		"ips":[{"address":"fd30:c0c0:1000::2/64","interface":2}]
+	}`
+	stubLifecycleSeams(t)
+
+	var got []string
+	orig := disableTXChecksumOffloadFn
+	disableTXChecksumOffloadFn = func(_ context.Context, names []string) error {
+		got = append(got, names...)
+		return nil
+	}
+	t.Cleanup(func() { disableTXChecksumOffloadFn = orig })
+
+	configs, err := c.Add(t.Context(), "vm1", testVMCfg(), network.AddSpec{Index: 0})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if !slices.Equal(got, []string{"cni0", "veth1234"}) {
+		t.Fatalf("offload interfaces = %v, want [cni0 veth1234]", got)
+	}
+	if len(configs) != 1 || configs[0].Network == nil || configs[0].Network.IP != "fd30:c0c0:1000::2" {
+		t.Fatalf("network configs = %+v, want IPv6 CNI result", configs)
+	}
+}
+
 func TestQuiesceSkipsMissingNetns(t *testing.T) {
 	c, _ := newTestCNIWithStore(t)
 	called := false
@@ -426,15 +461,16 @@ func newTestCNIWithStore(t *testing.T) (*CNI, *recordingExec) {
 func stubLifecycleSeams(t *testing.T) {
 	t.Helper()
 	origTAP, origNetns, origEnsure, origTC := deleteTAPFn, deleteNetnsFn, ensureNetnsFn, setupTCRedirectFn
-	origSet := setLinkStateFn
+	origSet, origOffload := setLinkStateFn, disableTXChecksumOffloadFn
 	deleteTAPFn = func(string, string) error { return nil }
 	deleteNetnsFn = func(context.Context, string) error { return nil }
 	ensureNetnsFn = func(string, string) (bool, error) { return false, nil }
 	setupTCRedirectFn = func(_, _, _ string, _ int, _ string) (string, error) { return "aa:bb:cc:dd:ee:01", nil }
 	setLinkStateFn = func(string, []string, bool) error { return nil }
+	disableTXChecksumOffloadFn = func(context.Context, []string) error { return nil }
 	t.Cleanup(func() {
 		deleteTAPFn, deleteNetnsFn, ensureNetnsFn, setupTCRedirectFn = origTAP, origNetns, origEnsure, origTC
-		setLinkStateFn = origSet
+		setLinkStateFn, disableTXChecksumOffloadFn = origSet, origOffload
 	})
 }
 
@@ -479,6 +515,7 @@ func assertRecordIDs(t *testing.T, c *CNI, want []string) {
 type recordingExec struct {
 	attempted []string
 	failIf    string
+	result    string
 }
 
 func (e *recordingExec) ExecPlugin(_ context.Context, _ string, _ []byte, environ []string) ([]byte, error) {
@@ -491,6 +528,9 @@ func (e *recordingExec) ExecPlugin(_ context.Context, _ string, _ []byte, enviro
 	e.attempted = append(e.attempted, ifName)
 	if ifName == e.failIf {
 		return nil, fmt.Errorf("simulated plugin failure on %s", ifName)
+	}
+	if e.result != "" {
+		return []byte(e.result), nil
 	}
 	return []byte(`{"cniVersion":"1.0.0"}`), nil
 }

@@ -75,6 +75,7 @@ func newRootCmd() *cobra.Command {
 	viper.SetDefault("cni_conf_dir", "/etc/cni/net.d")
 	viper.SetDefault("cni_bin_dir", "/opt/cni/bin")
 	viper.SetDefault("dns", "8.8.8.8,1.1.1.1")
+	viper.SetDefault("network_mode", "")
 	viper.SetDefault("stop_timeout_seconds", 30)
 	viper.SetDefault("pool_size", runtime.NumCPU())
 	viper.SetDefault("pull_conns", 8)

@@ -217,6 +217,11 @@ func BuildIPParams(networkConfigs []*types.NetworkConfig, vmName string, dnsServ
 		if n.Network == nil || n.Network.IP == "" {
 			continue
 		}
+		if ip := net.ParseIP(n.Network.IP); ip == nil || ip.To4() == nil {
+			// Linux's legacy kernel ip= grammar is IPv4-oriented here. IPv6
+			// cloudimg guests are configured by NoCloud network-config instead.
+			continue
+		}
 		param := fmt.Sprintf(" ip=%s::%s:%s:%s:eth%d:off",
 			n.Network.IP, n.Network.Gateway,
 			PrefixToNetmask(n.Network.Prefix), vmName, i)

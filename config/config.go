@@ -20,6 +20,8 @@ const (
 
 	MetaBackendJSON   = "json"
 	MetaBackendSQLite = "sqlite"
+	NetworkModeIPv4   = "IPv4NAT64"
+	NetworkModeIPv6   = "IPv6Only"
 
 	// defaultPullConns is the default concurrent Range connections per cloud-image download.
 	defaultPullConns = 8
@@ -58,6 +60,10 @@ type Config struct {
 	CNIBinDir string `json:"cni_bin_dir" mapstructure:"cni_bin_dir"`
 	// DNS: comma/semicolon-separated DNS servers injected into VM net config. Env: COCOON_DNS. Default: "8.8.8.8,1.1.1.1".
 	DNS string `json:"dns" mapstructure:"dns"`
+	// NetworkMode selects DHCP behavior for NICs without a CNI-assigned address.
+	// Empty and IPv4NAT64 preserve the legacy DHCPv4 behavior; IPv6Only enables
+	// RA plus stateful DHCPv6 in cloud-init/networkd.
+	NetworkMode string `json:"network_mode,omitempty" mapstructure:"network_mode"`
 	// NetScope keys this installation's host network families (bridge TAPs <scope><vmid8>-<nic>, CNI netns <scope>-<vmid>) so co-hosted installations never GC each other's; two alphanumerics, empty keeps the legacy bt / cocoon- names.
 	NetScope string `json:"net_scope,omitempty" mapstructure:"net_scope"`
 	// SocketWaitTimeoutSeconds: wait for the CH API socket after start. Default: 5; increase for slow storage.
@@ -121,6 +127,9 @@ func (c *Config) Validate() error {
 	}
 	if _, err := c.DNSServers(); err != nil {
 		return fmt.Errorf("dns: %w", err)
+	}
+	if c.NetworkMode != "" && c.NetworkMode != NetworkModeIPv4 && c.NetworkMode != NetworkModeIPv6 {
+		return fmt.Errorf("network_mode %q is not one of %s|%s", c.NetworkMode, NetworkModeIPv4, NetworkModeIPv6)
 	}
 	if err := c.Metering.Validate(); err != nil {
 		return err

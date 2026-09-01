@@ -25,13 +25,14 @@ const typ = "cni"
 
 // Seams for cross-platform lifecycle tests (netns/TAP ops are linux-only).
 var (
-	deleteTAPFn       = deleteTAPInNetns
-	deleteNetnsFn     = deleteNetns
-	ensureNetnsFn     = ensureNetns
-	setupTCRedirectFn = setupTCRedirect
-	tapPresentFn      = tapPresentInNetns
-	statNetnsFn       = os.Stat
-	setLinkStateFn    = setLinkStateInNetns
+	deleteTAPFn                = deleteTAPInNetns
+	deleteNetnsFn              = deleteNetns
+	ensureNetnsFn              = ensureNetns
+	setupTCRedirectFn          = setupTCRedirect
+	disableTXChecksumOffloadFn = disableTXChecksumOffload
+	tapPresentFn               = tapPresentInNetns
+	statNetnsFn                = os.Stat
+	setLinkStateFn             = setLinkStateInNetns
 )
 
 var _ network.Network = (*CNI)(nil)

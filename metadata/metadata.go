@@ -16,6 +16,7 @@ var (
 		"yamlQuote": func(s string) string {
 			return strings.ReplaceAll(s, "'", "''")
 		},
+		"ipv6Only": func(mode string) bool { return mode == "IPv6Only" },
 	}
 
 	metaDataTmpl = template.Must(template.New("meta-data").Parse(
@@ -67,7 +68,18 @@ write_files:
       DNS={{.}}
 {{- end}}
 {{- else}}
+{{- if ipv6Only $.NetworkMode}}
+      DHCP=ipv6
+      IPv6AcceptRA=yes
+
+      [DHCPv6]
+      DUIDType=link-layer
+{{- else}}
       DHCP=ipv4
+
+      [DHCPv4]
+      ClientIdentifier=mac
+{{- end}}
 {{- end}}
 {{- if eq $i 0}}
       RequiredForOnline=yes
@@ -79,7 +91,7 @@ write_files:
 `))
 
 	// networkConfigTmpl renders cloud-init network-config (netplan v2); the clone-reinit fallback for netplan PERM-MAC mismatch is wired via user-data write_files.
-	networkConfigTmpl = template.Must(template.New("network-config").Parse(`version: 2
+	networkConfigTmpl = template.Must(template.New("network-config").Funcs(tmplFuncs).Parse(`version: 2
 ethernets:
 {{- range $i, $n := .Networks}}
   id{{$i}}:
@@ -101,26 +113,39 @@ ethernets:
 {{- end}}
 {{- end}}
 {{- else}}
+{{- if ipv6Only $.NetworkMode}}
+    dhcp4: false
+    dhcp6: true
+    accept-ra: true
+{{- else}}
     dhcp4: true
+{{- end}}
 {{- end}}
 {{- end}}
   zfallback:
     match:
       name: "e*"
+{{- if ipv6Only .NetworkMode}}
+    dhcp4: false
+    dhcp6: true
+    accept-ra: true
+{{- else}}
     dhcp4: true
+{{- end}}
     optional: true
 `))
 )
 
 // Config holds the inputs for generating cloud-init NoCloud metadata.
 type Config struct {
-	InstanceID string
-	Hostname   string
-	Username   string
-	Password   string
-	Networks   []NetworkInfo
-	Mounts     []MountSpec // optional fstab entries written by cloud-init
-	DNS        []string    // e.g. ["8.8.8.8", "8.8.4.4"]
+	InstanceID  string
+	Hostname    string
+	Username    string
+	Password    string
+	Networks    []NetworkInfo
+	Mounts      []MountSpec // optional fstab entries written by cloud-init
+	DNS         []string    // e.g. ["8.8.8.8", "8.8.4.4"]
+	NetworkMode string      // IPv6Only switches dynamic NICs to DHCPv6 + RA.
 }
 
 // NetworkInfo describes a single guest network interface for cloud-init.

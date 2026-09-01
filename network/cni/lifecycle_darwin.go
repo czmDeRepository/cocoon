@@ -19,6 +19,10 @@ func setupTCRedirect(_, _, _ string, _ int, _ string) (string, error) {
 	return "", errNotSupported
 }
 
+func disableTXChecksumOffload(_ context.Context, _ []string) error {
+	return errNotSupported
+}
+
 func deleteTAPInNetns(_, _ string) error {
 	return errNotSupported
 }
